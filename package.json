@@ -1,21 +1,18 @@
 {
-  "name": "telegram-bot",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "split-bot-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.13.1",
+
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "check": "ultracite check",
-    "fix": "ultracite fix"
+    "check": "turbo run check",
+    "fix": "turbo run fix",
+    "build": "turbo run build",
+    "dev": "turbo run dev"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "telegraf": "^4.16.3"
-  },
+
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
+    "turbo": "^2.8.11",
     "ultracite": "^7.2.1"
   }
 }
