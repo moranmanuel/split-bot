@@ -1,73 +1,98 @@
-let monto = 1500
-let motivo = "Pizzas"
-const gastosPorUsuario = {}
+let amount = 1500
+let description = "Pizzas"
+let groupCode = 32752
+const userExpenses = {}
+const groups = {}
 
 class SplitBot {
-    constructor() {
-    }
-
-    mostrarGasto(ctx) {
+    static showExpense(ctx) {
         const userId = ctx.from.id
-        const nombre = ctx.from.first_name  
+        const name = ctx.from.first_name  
 
-        const gastos = gastosPorUsuario[userId]?.gastos
+        const expenses = userExpenses[userId]?.expenses
 
-        if (!gastos || gastos.length === 0) {
+        if (!expenses || expenses.length === 0) {
           return ctx.reply("No hay gastos aún 🤷‍♂️")
         }
 
-        const texto = gastos
-          .map(g => `$${g.monto} - ${g.descripcion}`)
+        const texto = expenses
+          .map(g => `$${g.amount} - ${g.description}`)
           .join("\n")
 
         ctx.reply(texto)
     }
     
-    guardarGasto(ctx) {
+    static saveExpense(ctx) {
         const userId = ctx.from.id
-        const nombre = ctx.from.first_name
+        const name = ctx.from.first_name
 
-        const args = ctx.message.text.split(' ').slice(1) 
+        const args = ctx.message.text.split(' ').slice(1)
+
+        const amount = args[0]
+        const concept = args.slice(1).join(' ')
+        const description = concept.charAt(0).toUpperCase() + concept.slice(1)
+
         
-        const monto = args[0]
-        const concepto = args.slice(1).join(' ')
-        const descripcion = concepto.charAt(0).toUpperCase() + concepto.slice(1)
-        
-        
-        if (!gastosPorUsuario[userId]) {
-          gastosPorUsuario[userId] = {
-            nombre,
-            gastos: []
+        if (!userExpenses[userId]) {
+          userExpenses[userId] = {
+            name,
+            expenses: []
           }
         }
         
-        gastosPorUsuario[userId].gastos.push({
-          monto,
-          descripcion
+        userExpenses[userId].expenses.push({
+          amount,
+          description
         })
 
-        ctx.reply(`Gasto guardado ${nombre}`)
+        ctx.reply(`Gasto guardado ${name}`)
+    }
+
+    static createGroup(ctx) {
+      const args = ctx.message.text.split(' ').slice(1)
+      const concept = args.join(' ')
+      const groupName = concept.charAt(0).toUpperCase() + concept.slice(1)
+
+      ctx.reply(`Grupo ${groupName} creado`)
+      ctx.reply(`Codigo: ${groupCode}`)
+
+      groups.push({
+        groupName,
+        groupCode
+      })
+    }
+
+    static joinGroup(ctx) {
+      const args = ctx.message.text.split(' ').slice(1)
+
+      ctx.reply(`Te uniste al grupo: ${groupName}`)
     }
 }
-
-let splitbot = new SplitBot()
 
 const { Telegraf } = require('telegraf')
 
 const bot = new Telegraf('8570386733:AAGZCYA8zRs_aNqoIcjpdoh1RVovMzb-2YY')
 
 bot.command('gastar', (ctx) => {
-  splitbot.guardarGasto(ctx)
+  SplitBot.saveExpense(ctx)
+})
+  
+bot.command('listar', (ctx) => {
+  SplitBot.showExpense(ctx)
 })
 
-bot.command('listar', (ctx) => {
-  splitbot.mostrarGasto(ctx)
+bot.command('crear', (ctx) => {
+  SplitBot.createGroup(ctx)
+})
+
+bot.command('unirse', (ctx) => {
+  SplitBot.joinGroup(ctx)
 })
 
 bot.start((ctx) => {
   ctx.reply('Hola 😎 Ya estoy vivo')
 })
-
+  
 bot.hears('hola', (ctx) => {
   ctx.reply('Tu nariz contra mis bolas')
 })
