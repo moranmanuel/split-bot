@@ -1,8 +1,9 @@
 let amount = 1500
 let description = "Pizzas"
-let groupCode = 32752
 const userExpenses = {}
-const groups = {}
+import 'dotenv/config'
+import { supabase } from '../../supabaseclient.js';
+
 
 class SplitBot {
     static showExpense(ctx) {
@@ -48,24 +49,38 @@ class SplitBot {
         ctx.reply(`Gasto guardado ${name}`)
     }
 
-    static createGroup(ctx) {
+    static createGroup = async (ctx) => {
       const args = ctx.message.text.split(' ').slice(1)
       const concept = args.join(' ')
       const groupName = concept.charAt(0).toUpperCase() + concept.slice(1)
 
+      const code = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
+
+      const { data } = await supabase.from("groups").select("code")
+
+      for (let i = 0; i < data.length; i++) {
+        if (code == data[i].code) {
+          code = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
+          break;
+        }
+      }
+
+      const newGroup = {name:groupName, code:code};
+      await addData(newGroup);
+
       ctx.reply(`Grupo ${groupName} creado`)
       ctx.reply(`Codigo: ${groupCode}`)
-
-      groups.push({
-        groupName,
-        groupCode
-      })
     }
 
     static joinGroup(ctx) {
       const args = ctx.message.text.split(' ').slice(1)
 
       ctx.reply(`Te uniste al grupo: ${groupName}`)
+    }
+
+    static addData = async (data) => {
+      const { error } = await supabase.from('groups').insert(data);
+      return error;
     }
 }
 
