@@ -1,5 +1,3 @@
-let amount = 1500
-let description = "Pizzas"
 const userExpenses = {}
 import 'dotenv/config'
 import { supabase } from '../../supabaseclient.js';
@@ -54,39 +52,47 @@ class SplitBot {
       const concept = args.join(' ')
       const groupName = concept.charAt(0).toUpperCase() + concept.slice(1)
 
-      const code = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
+      let groupCode = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
 
       const { data } = await supabase.from("groups").select("code")
 
-      for (let i = 0; i < data.length; i++) {
-        if (code == data[i].code) {
-          code = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
-          break;
-        }
+      let exists = true
+
+      while (exists) {
+        groupCode = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
+        exists = data.some(code => code === groupCode)
       }
 
-      const newGroup = {name:groupName, code:code};
-      await addData(newGroup);
+      const newGroup = { name:groupName, code:groupCode }
+      await SplitBot.addData(newGroup)
 
       ctx.reply(`Grupo ${groupName} creado`)
       ctx.reply(`Codigo: ${groupCode}`)
     }
 
-    static joinGroup(ctx) {
+    static joinGroup = async(ctx) => {
       const args = ctx.message.text.split(' ').slice(1)
+      const groupCode = args.join(' ')
 
-      ctx.reply(`Te uniste al grupo: ${groupName}`)
+      const { data, error } = await supabase.from("groups").select("name").eq('code', groupCode)
+      
+      if(data.length) {
+        const newUser = { name:groupName, code:groupCode }
+        ctx.reply(`Te uniste al grupo: ${data[0].name}`)
+      } else {
+        ctx.reply(`No existe grupo con el codigo: ${groupCode}`)
+      }
     }
 
-    static addData = async (data) => {
+    static addData = async(data) => {
       const { error } = await supabase.from('groups').insert(data);
       return error;
     }
 }
 
-const { Telegraf } = require('telegraf')
+import { Telegraf } from 'telegraf'
 
-const bot = new Telegraf('8570386733:AAGZCYA8zRs_aNqoIcjpdoh1RVovMzb-2YY')
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN)
 
 bot.command('gastar', (ctx) => {
   SplitBot.saveExpense(ctx)
