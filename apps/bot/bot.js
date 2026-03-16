@@ -28,14 +28,27 @@ class SplitBot {
         ctx.reply(texto)
     }
     
-    static createExpense(ctx) {
+    static createExpense = async(ctx) => {
         const args = ctx.message.text.split(' ').slice(1)
 
         const amount = args[0]
         const concept = args.slice(1).join(' ')
         const description = concept.charAt(0).toUpperCase() + concept.slice(1)
 
-        userId, groupId = this.getIds(ctx)
+        const { userId } = await SplitBot.getIds(ctx)
+
+        const { data } = await supabase.from("group_members").select("group_id").eq("user_id", userId).order("last_joined_at", { ascending: false }).limit(1).single()
+
+        if(data) {
+          const newExpense = { amount: amount, description: description, user_id: userId, group_id: data.group_id }
+  
+          await SplitBot.addData(newExpense, 'expenses')
+  
+          ctx.reply("Gasto guardado")
+          ctx.reply(`Precio $${amount} | Motivo: ${description}`)
+        } else {
+          ctx.reply("Para guardar un gasto primero debes estar en un grupo (/unirse XXXXX)")
+        }
     }
 
     static createGroup = async (ctx) => {
@@ -51,7 +64,7 @@ class SplitBot {
 
       while (exists) {
         groupCode = String(Math.floor(Math.random() * 100000)).padStart(5, '0')
-        exists = data.some(code => code === groupCode)
+        exists = data.some(g => g.code === groupCode)
       }
 
       const newGroup = { name:groupName, code:groupCode }
@@ -80,9 +93,9 @@ class SplitBot {
       ] = await Promise.all([userQuery, groupQuery])
 
       return {
-        userId: dataUser.id,
-        groupId: dataGroup.id,
-        groupName: dataGroup.name
+        userId: dataUser?.id,
+        groupId: dataGroup?.id,
+        groupName: dataGroup?.name
       }
     }
 
@@ -92,13 +105,25 @@ class SplitBot {
 
       const { userId, groupId, groupName } = await SplitBot.getIds(ctx, groupCode)
 
-      if(groupName) {
-        const newGroupMember = { user_id:userId, group_id:groupId }
-        await SplitBot.addData(newGroupMember, 'group_members')
-        ctx.reply(`Te uniste al grupo: ${groupName}`)
+      const { data } = await supabase.from("group_members").select("*").eq("user_id", userId).order("last_joined_at", { ascending: false })
+
+      if (data.some(gm => gm.group_id === groupId)) {
+        if(data[0].group_id == groupId) {
+          ctx.reply(`Ya estas en el grupo ${groupName}`)
+        } else {
+          await supabase.from("group_members").update({ last_joined_at: new Date() }).eq("group_id", groupId)
+          ctx.reply(`Te uniste al grupo: ${groupName}`)
+        }
       } else {
-        ctx.reply(`No existe grupo con el codigo: ${groupCode}`)
+        if(groupName) {
+          const newGroupMember = { user_id:userId, group_id:groupId }
+          await SplitBot.addData(newGroupMember, 'group_members')
+          ctx.reply(`Te uniste al grupo: ${groupName}`)
+        } else {
+          ctx.reply(`No existe grupo con el codigo: ${groupCode}`)
+        }
       }
+
     }
 
     static addData = async(data, table) => {
