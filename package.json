@@ -2,17 +2,26 @@
   "name": "split-bot-monorepo",
   "private": true,
   "packageManager": "pnpm@10.13.1",
-
   "scripts": {
-    "check": "turbo run check",
-    "fix": "turbo run fix",
+    "check": "ultracite check",
+    "check-types": "tsc -p tsconfig.packages.json",
+    "fix": "ultracite fix",
     "build": "turbo run build",
-    "dev": "turbo run dev"
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "prepare": "husky"
   },
-
   "devDependencies": {
-    "@biomejs/biome": "^2.3.15",
+    "@biomejs/biome": "^2.4.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.3",
     "turbo": "^2.8.11",
-    "ultracite": "^7.2.1"
+    "typescript": "^5.8.3",
+    "ultracite": "^7.2.5"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
+      "pnpm exec ultracite fix"
+    ]
   }
 }

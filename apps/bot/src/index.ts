@@ -1,8 +1,7 @@
-require('dotenv/config')
-const express = require('express')
-const SplitBot = require('./bot')
-const { Telegraf } = require('telegraf')
-
+require("dotenv/config");
+const express = require("express");
+const SplitBot = require("./bot");
+const { Telegraf } = require("telegraf");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL; // your Cloud Run https URL
@@ -11,28 +10,27 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 const WEBHOOK_PATH = `/telegram/${WEBHOOK_SECRET}`;
 
-let splitbot = new SplitBot()
+const splitbot = new SplitBot();
 
+const bot = new Telegraf(BOT_TOKEN);
 
-const bot = new Telegraf(BOT_TOKEN)
+bot.command("gastar", (ctx) => {
+  splitbot.guardarGasto(ctx);
+});
 
-bot.command('gastar', (ctx) => {
-  splitbot.guardarGasto(ctx)
-})
-
-bot.command('listar', (ctx) => {
-  splitbot.mostrarGasto(ctx)
-})
+bot.command("listar", (ctx) => {
+  splitbot.mostrarGasto(ctx);
+});
 
 bot.start((ctx) => {
-  ctx.reply('Hola 😎 Ya estoy vivo')
-})
+  ctx.reply("Hola 😎 Ya estoy vivo");
+});
 
-bot.hears('hola', (ctx) => {
-  ctx.reply('Tu nariz contra mis bolas')
-})
+bot.hears("hola", (ctx) => {
+  ctx.reply("Tu nariz contra mis bolas");
+});
 
-bot.launch()
+bot.launch();
 
 const app = express();
 
@@ -52,4 +50,4 @@ app.listen(PORT, async () => {
   console.log(`Listening on ${PORT}. Webhook: ${PUBLIC_URL}${WEBHOOK_PATH}`);
 });
 
-console.log('Bot corriendo 🚀')
+console.log("Bot corriendo 🚀");

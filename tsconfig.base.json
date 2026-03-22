@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@splitbot/auth": ["packages/auth/src"],
+      "@splitbot/dal": ["packages/dal/src"],
+      "@splitbot/db": ["packages/db/src"],
+      "@splitbot/services": ["packages/services/src"],
+      "@splitbot/shared": ["packages/shared/src"],
+      "@splitbot/telegram": ["packages/telegram/src"]
+    },
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "noEmitOnError": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "strict": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "paths": {
+      "@splitbot/auth": ["packages/auth/src"],
+      "@splitbot/dal": ["packages/dal/src"],
+      "@splitbot/db": ["packages/db/src"],
+      "@splitbot/services": ["packages/services/src"],
+      "@splitbot/shared": ["packages/shared/src"],
+      "@splitbot/telegram": ["packages/telegram/src"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts"]
+}
