@@ -8,24 +8,29 @@ class SplitBot {
       const newUser = { telegram_id:ctx.from.id, name:ctx.from.first_name }
       await SplitBot.addData(newUser, 'users')
 
-      ctx.reply('Hola 😎 Ya estoy vivo')
     }
 
-    static showExpense(ctx) {
-        const userId = ctx.from.id
-        const name = ctx.from.first_name  
+    static showExpenses = async (ctx) => {
+      const { userId } = await SplitBot.getIds(ctx)
+        
+      const { data: dataGroupMembers } = await supabase.from("group_members").select("group_id").eq("user_id", userId).order("last_joined_at", { ascending: false }).limit(1).single()
+      
+      const groupsQuery = supabase.from("groups").select("name").eq("id", dataGroupMembers.group_id).single()
+      
+      const expensesQuery = supabase.from("expenses").select("amount, description, users(name)").eq("group_id", dataGroupMembers.group_id)  
+      
+      const [
+        { data: dataGroup },
+        { data: dataExpenses}
+      ] = await Promise.all([groupsQuery, expensesQuery])
+      
+      let text = `Gastos ${dataGroup.name}:\n`;
 
-        const expenses = userExpenses[userId]?.expenses
+      for (const expense of dataExpenses) {
+        text += `${expense.users.name}: $${expense.amount} ${expense.description} \n`;
+      }
 
-        if (!expenses || expenses.length === 0) {
-          return ctx.reply("No hay gastos aún 🤷‍♂️")
-        }
-
-        const texto = expenses
-          .map(g => `$${g.amount} - ${g.description}`)
-          .join("\n")
-
-        ctx.reply(texto)
+      await ctx.reply(text);
     }
     
     static createExpense = async(ctx) => {
@@ -39,15 +44,19 @@ class SplitBot {
 
         const { data } = await supabase.from("group_members").select("group_id").eq("user_id", userId).order("last_joined_at", { ascending: false }).limit(1).single()
 
+        const { data: dataGroup } = await supabase.from("groups").select("name").eq("id", data.group_id).single()
+
         if(data) {
           const newExpense = { amount: amount, description: description, user_id: userId, group_id: data.group_id }
   
           await SplitBot.addData(newExpense, 'expenses')
-  
-          ctx.reply("Gasto guardado")
-          ctx.reply(`Precio $${amount} | Motivo: ${description}`)
+          
+          await ctx.reply(
+            'Gasto guardado\n' +
+            `Grupo: ${dataGroup.name} | Motivo: ${description} | Precio: $${amount}`
+          )
         } else {
-          ctx.reply("Para guardar un gasto primero debes estar en un grupo (/unirse XXXXX)")
+          await ctx.reply("Para guardar un gasto primero debes estar en un grupo")
         }
     }
 
@@ -123,7 +132,18 @@ class SplitBot {
           ctx.reply(`No existe grupo con el codigo: ${groupCode}`)
         }
       }
+    }
 
+    static showCommands = async (ctx) => {
+      await ctx.reply(
+        "📌 Comandos del bot\n\n" +
+        "/crear + nombre de grupo → Crea un grupo nuevo\n" +
+        "Ej: /crear Viaje\n\n" +
+        "/unirse + codigo → Te unís a un grupo\n" +
+        "Ej: /unirse ABC123\n\n" +
+        "/gastar + precio + descripcion → Agrega un gasto\n" +
+        "Ej: /gastar 500 Pizza"
+      )
     }
 
     static addData = async(data, table) => {
@@ -138,26 +158,27 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN)
 
 bot.command('gastar', (ctx) => {
   SplitBot.createExpense(ctx)
+  SplitBot.showCommands(ctx)
 })
   
 bot.command('listar', (ctx) => {
-  SplitBot.showExpense(ctx)
+  SplitBot.showExpenses(ctx)
+  SplitBot.showCommands(ctx)
 })
 
 bot.command('crear', (ctx) => {
   SplitBot.createGroup(ctx)
+  SplitBot.showCommands(ctx)
 })
 
 bot.command('unirse', (ctx) => {
   SplitBot.joinGroup(ctx)
+  SplitBot.showCommands(ctx)
 })
 
 bot.start((ctx) => {
   SplitBot.createUser(ctx)
-})
-  
-bot.hears(/hola/i, (ctx) => {
-  ctx.reply('Tu nariz contra mis bolas')
+  SplitBot.showCommands(ctx)
 })
 
 bot.launch()
