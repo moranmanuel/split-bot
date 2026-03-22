@@ -36,27 +36,43 @@ class SplitBot {
     static createExpense = async(ctx) => {
         const args = ctx.message.text.split(' ').slice(1)
 
-        const amount = args[0]
-        const concept = args.slice(1).join(' ')
+        const user = args[0]
+        const amount = args[1]
+        const concept = args.slice(2).join(' ')
         const description = concept.charAt(0).toUpperCase() + concept.slice(1)
 
         const { userId } = await SplitBot.getIds(ctx)
 
         const { data } = await supabase.from("group_members").select("group_id").eq("user_id", userId).order("last_joined_at", { ascending: false }).limit(1).single()
 
-        const { data: dataGroup } = await supabase.from("groups").select("name").eq("id", data.group_id).single()
+        const dataGroupQuery = supabase.from("groups").select("name").eq("id", data.group_id).single()
 
-        if(data) {
-          const newExpense = { amount: amount, description: description, user_id: userId, group_id: data.group_id }
+        const dataGroupMembersQuery = supabase.from("group_members").select("users(name), user_id").eq("group_id", data.group_id).eq("users.name", user).single()
+
+        const [
+          { data: dataGroup },
+          { data: dataGroupMembers }
+        ] = await Promise.all([dataGroupQuery, dataGroupMembersQuery])
+
+        if(data && dataGroupMembers) {
+          const newExpense = { amount: amount, description: description, user_id: dataGroupMembers.user_id, group_id: data.group_id }
   
           await SplitBot.addData(newExpense, 'expenses')
           
           await ctx.reply(
-            'Gasto guardado\n' +
-            `Grupo: ${dataGroup.name} | Motivo: ${description} | Precio: $${amount}`
+            `✅ <b>Gasto guardado</b>\n\n` +
+            `📌 <b>Detalles</b>\n` +
+            `━━━━━━━━━━━━━━\n` +
+            `👥 ${dataGroup.name}\n` +
+            `👤 ${user}\n` +
+            `🧾 ${description}\n` +
+            `💲 $${amount}`,
+            { parse_mode: "HTML" }
           )
+        } else if(!data) {
+          ctx.reply("Para guardar un gasto primero debes estar en un grupo")
         } else {
-          await ctx.reply("Para guardar un gasto primero debes estar en un grupo")
+          ctx.reply("No existe ese usuario en este grupo")
         }
     }
 
@@ -79,8 +95,14 @@ class SplitBot {
       const newGroup = { name:groupName, code:groupCode }
       await SplitBot.addData(newGroup, 'groups')
 
-      ctx.reply(`Grupo ${groupName} creado`)
-      ctx.reply(`Codigo: ${groupCode}`)
+      await ctx.reply(
+        `✅ <b>Grupo creado</b>\n\n` +
+        `📌 <b>Detalles</b>\n` +
+        `━━━━━━━━━━━━━━\n` +
+        `👥 <b>Grupo:</b> ${groupName}\n` +
+        `🔑 <b>Código:</b> <code>${groupCode}</code>`,
+        { parse_mode: "HTML" }
+      )
     }
 
     static getIds = async(ctx, groupCode) => {
@@ -136,13 +158,16 @@ class SplitBot {
 
     static showCommands = async (ctx) => {
       await ctx.reply(
-        "📌 Comandos del bot\n\n" +
-        "/crear + nombre de grupo → Crea un grupo nuevo\n" +
-        "Ej: /crear Viaje\n\n" +
-        "/unirse + codigo → Te unís a un grupo\n" +
-        "Ej: /unirse ABC123\n\n" +
-        "/gastar + precio + descripcion → Agrega un gasto\n" +
-        "Ej: /gastar 500 Pizza"
+        `📌 <b>Comandos del bot</b>\n\n` +
+        `📋 <b>Lista de comandos</b>\n` +
+        `━━━━━━━━━━━━━━\n` +
+        `🆕 /crear nombre → Crear grupo\n` +
+        `Ej: <code>/crear Viaje</code>\n\n` +
+        `🔑 /unirse codigo → Unirse a grupo\n` +
+        `Ej: <code>/unirse ABC123</code>\n\n` +
+        `💲 /gastar usuario precio descripcion\n` +
+        `Ej: <code>/gastar Manuel 500 Pizza</code>`,
+        { parse_mode: "HTML" }
       )
     }
 
@@ -156,29 +181,29 @@ import { Telegraf } from 'telegraf'
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN)
 
-bot.command('gastar', (ctx) => {
-  SplitBot.createExpense(ctx)
-  SplitBot.showCommands(ctx)
+bot.command('gastar', async (ctx) => {
+  await SplitBot.createExpense(ctx)
+  await SplitBot.showCommands(ctx)
 })
   
-bot.command('listar', (ctx) => {
-  SplitBot.showExpenses(ctx)
-  SplitBot.showCommands(ctx)
+bot.command('listar', async (ctx) => {
+  await SplitBot.showExpenses(ctx)
+  await SplitBot.showCommands(ctx)
 })
 
-bot.command('crear', (ctx) => {
-  SplitBot.createGroup(ctx)
-  SplitBot.showCommands(ctx)
+bot.command('crear', async (ctx) => {
+  await SplitBot.createGroup(ctx)
+  await SplitBot.showCommands(ctx)
 })
 
-bot.command('unirse', (ctx) => {
-  SplitBot.joinGroup(ctx)
-  SplitBot.showCommands(ctx)
+bot.command('unirse', async (ctx) => {
+  await SplitBot.joinGroup(ctx)
+  await SplitBot.showCommands(ctx)
 })
 
-bot.start((ctx) => {
-  SplitBot.createUser(ctx)
-  SplitBot.showCommands(ctx)
+bot.start(async (ctx) => {
+  await SplitBot.createUser(ctx)
+  await SplitBot.showCommands(ctx)
 })
 
 bot.launch()
