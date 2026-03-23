@@ -1,0 +1,21 @@
+{
+  "name": "@splitbot/auth",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc -p tsconfig.json --noEmit",
+    "lint": "pnpm exec ultracite check src"
+  },
+  "dependencies": {
+    "@splitbot/shared": "workspace:*"
+  }
+}
