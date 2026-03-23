@@ -11,6 +11,15 @@
     "lint": "turbo run lint",
     "prepare": "husky"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^17.3.1",
+    "telegraf": "^4.16.3"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.5",
     "husky": "^9.1.7",

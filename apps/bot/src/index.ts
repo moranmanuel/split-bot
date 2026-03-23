@@ -1,7 +1,8 @@
-require("dotenv/config");
+import "dotenv/config";
+import { type Context, Telegraf } from "telegraf";
+import SplitBot, { type BotCommandContext } from "./bot";
+
 const express = require("express");
-const SplitBot = require("./bot");
-const { Telegraf } = require("telegraf");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL; // your Cloud Run https URL
@@ -10,23 +11,27 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 const WEBHOOK_PATH = `/telegram/${WEBHOOK_SECRET}`;
 
+if (!BOT_TOKEN) {
+  throw new Error("TELEGRAM_BOT_TOKEN is required");
+}
+
 const splitbot = new SplitBot();
 
 const bot = new Telegraf(BOT_TOKEN);
 
-bot.command("gastar", (ctx) => {
+bot.command("gastar", (ctx: BotCommandContext) => {
   splitbot.guardarGasto(ctx);
 });
 
-bot.command("listar", (ctx) => {
+bot.command("listar", (ctx: BotCommandContext) => {
   splitbot.mostrarGasto(ctx);
 });
 
-bot.start((ctx) => {
+bot.start((ctx: Context) => {
   ctx.reply("Hola 😎 Ya estoy vivo");
 });
 
-bot.hears("hola", (ctx) => {
+bot.hears("hola", (ctx: Context) => {
   ctx.reply("Tu nariz contra mis bolas");
 });
 
@@ -38,7 +43,13 @@ const app = express();
 app.use(express.json());
 
 // Healthcheck (useful for Cloud Run)
-app.get("/", (_req, res) => res.status(200).send("ok"));
+app.get(
+  "/",
+  (
+    _req: unknown,
+    res: { status: (code: number) => { send: (body: string) => unknown } }
+  ) => res.status(200).send("ok")
+);
 
 // Webhook endpoint
 app.post(WEBHOOK_PATH, bot.webhookCallback(WEBHOOK_PATH));
