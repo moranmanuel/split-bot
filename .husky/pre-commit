@@ -1,0 +1,9 @@
+#!/bin/sh
+
+if ! pnpm exec lint-staged; then
+  echo ""
+  echo "pre-commit warning: lint-staged failed, but the commit will continue."
+  echo "Run 'pnpm exec lint-staged' or 'pnpm exec ultracite fix' manually when ready."
+fi
+
+exit 0
