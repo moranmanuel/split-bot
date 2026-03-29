@@ -82,21 +82,25 @@ const splitBot = {
     //   ctx.reply(`Te uniste al grupo: ${groupName}`);
     // }
   },
-};
 
-const splitBotCommandHandlers = {
-  createUser: async (ctx) => {
-    if (!ctx.from) {
-      throw new Error('Message "from" is missing');
-    }
-
-    const newUser = { telegram_id: ctx?.from.id, name: ctx.from.first_name };
-    await splitBot.addData(newUser, "users");
+  createGroup: async (newGroup: { name: string; code: string }) => {
+    await splitBot.addData(newGroup, "groups");
   },
-  showExpenses: async (ctx) => {
-    const { userId } = await splitBotCommandHandlers.getIds(ctx);
 
-    const { data: dataGroupMembers } = await supabase
+  getGroupCodes: async () => {
+    const { data } = await db.from("groups").select("slug");
+    return data;
+  },
+
+  createExpense: async (
+    id: number,
+    user: string,
+    amount: string,
+    description: string
+  ) => {
+    const { userId } = await splitBot.getUserAndGroupData(id);
+
+    const { data } = await db
       .from("group_members")
       .select("group_id")
       .eq("user_id", userId)
@@ -104,13 +108,81 @@ const splitBotCommandHandlers = {
       .limit(1)
       .single();
 
-    const groupsQuery = supabase
+    if (!data) {
+      throw new Error("El usuario no esta en ningun grupo");
+    }
+
+    const dataGroupQuery = db
+      .from("groups")
+      .select("name")
+      .eq("id", data.group_id)
+      .single();
+
+    const dataGroupMembersQuery = db
+      .from("group_members")
+      .select("users(name), user_id")
+      .eq("group_id", data.group_id)
+      .eq("users.name", user)
+      .single();
+
+    const [{ data: dataGroup }, { data: dataGroupMembers }] = await Promise.all(
+      [dataGroupQuery, dataGroupMembersQuery]
+    );
+
+    if (!dataGroup) {
+      throw new Error("No existe la columna name en la tabla groups");
+    }
+
+    if (data && dataGroupMembers) {
+      const newExpense = {
+        amount,
+        description,
+        user_id: dataGroupMembers.user_id,
+        group_id: data.group_id,
+      };
+
+      await splitBot.addData(newExpense, "expenses");
+      return dataGroup.name;
+    }
+    if (data) {
+      throw new Error("No existe ese usuario en este grupo");
+    }
+    throw new Error("Para guardar un gasto primero debes estar en un grupo");
+  },
+};
+
+const splitBotCommandHandlers = {
+  createUser: async (ctx) => {
+    if (!ctx) {
+      throw new Error('Message "from" is missing');
+    }
+
+    const newUser = { telegram_id: ctx?.from.id, name: ctx.from.first_name };
+    await splitBot.addData(newUser, "users");
+  },
+
+  showExpenses: async (ctx) => {
+    const { userId } = await splitBot.getUserAndGroupData(ctx);
+
+    const { data: dataGroupMembers } = await db
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", userId)
+      .order("last_joined_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!dataGroupMembers) {
+      throw new Error("El usuario no esta en ningun grupo");
+    }
+
+    const groupsQuery = db
       .from("groups")
       .select("name")
       .eq("id", dataGroupMembers.group_id)
       .single();
 
-    const expensesQuery = supabase
+    const expensesQuery = db
       .from("expenses")
       .select("amount, description, users(name)")
       .eq("group_id", dataGroupMembers.group_id);
@@ -120,6 +192,14 @@ const splitBotCommandHandlers = {
       expensesQuery,
     ]);
 
+    if (!dataGroup) {
+      throw new Error("Query error");
+    }
+
+    if (!dataExpenses) {
+      throw new Error("Query error");
+    }
+
     let text = `Gastos ${dataGroup.name}:\n`;
 
     for (const expense of dataExpenses) {
@@ -128,6 +208,7 @@ const splitBotCommandHandlers = {
 
     await ctx.reply(text);
   },
+
   createExpense: async (ctx) => {
     if (!ctx.message) {
       throw new Error("Message payload is undefined");
@@ -139,60 +220,35 @@ const splitBotCommandHandlers = {
     const amount = args[1];
     const concept = args.slice(2).join(" ");
     const description = concept.charAt(0).toUpperCase() + concept.slice(1);
+    const telegramId = ctx.from.id;
 
-    const { userId } = await splitBot.getIds(ctx);
+    if (!(user && amount && description)) {
+      throw new Error("Missing data");
+    }
 
-    const { data } = await supabase
-      .from("group_members")
-      .select("group_id")
-      .eq("user_id", userId)
-      .order("last_joined_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    const dataGroupQuery = supabase
-      .from("groups")
-      .select("name")
-      .eq("id", data.group_id)
-      .single();
-
-    const dataGroupMembersQuery = supabase
-      .from("group_members")
-      .select("users(name), user_id")
-      .eq("group_id", data.group_id)
-      .eq("users.name", user)
-      .single();
-
-    const [{ data: dataGroup }, { data: dataGroupMembers }] = await Promise.all(
-      [dataGroupQuery, dataGroupMembersQuery]
+    const groupName = splitBot.createExpense(
+      telegramId,
+      user,
+      amount,
+      description
     );
 
-    if (data && dataGroupMembers) {
-      const newExpense = {
-        amount,
-        description,
-        user_id: dataGroupMembers.user_id,
-        group_id: data.group_id,
-      };
-
-      await splitBot.addData(newExpense, "expenses");
-
+    if (groupName) {
       await ctx.reply(
         "✅ <b>Gasto guardado</b>\n\n" +
           "📌 <b>Detalles</b>\n" +
           "━━━━━━━━━━━━━━\n" +
-          `👥 ${dataGroup.name}\n` +
+          `👥 ${groupName}\n` +
           `👤 ${user}\n` +
           `🧾 ${description}\n` +
           `💲 $${amount}`,
         { parse_mode: "HTML" }
       );
-    } else if (data) {
-      ctx.reply("No existe ese usuario en este grupo");
     } else {
-      ctx.reply("Para guardar un gasto primero debes estar en un grupo");
+      throw new Error("Query error");
     }
   },
+
   createGroup: async (ctx) => {
     const args = ctx.message.text.split(" ").slice(1);
     const concept = args.join(" ");
@@ -203,17 +259,22 @@ const splitBotCommandHandlers = {
       "0"
     );
 
-    const { data } = await supabase.from("groups").select("code");
+    const data = await splitBot.getGroupCodes();
+
+    if (!data) {
+      throw new Error("Query Error");
+    }
 
     let exists = true;
 
     while (exists) {
       groupCode = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
-      exists = data.some((g) => g.code === groupCode);
+      exists = data.some((g) => g.slug === groupCode);
     }
 
     const newGroup = { name: groupName, code: groupCode };
-    await splitBot.addData(newGroup, "groups");
+
+    await splitBot.createGroup(newGroup);
 
     await ctx.reply(
       "✅ <b>Grupo creado</b>\n\n" +
@@ -224,6 +285,7 @@ const splitBotCommandHandlers = {
       { parse_mode: "HTML" }
     );
   },
+
   showCommands: async (ctx) => {
     await ctx.reply(
       "📌 <b>Comandos del bot</b>\n\n" +
@@ -238,6 +300,7 @@ const splitBotCommandHandlers = {
       { parse_mode: "HTML" }
     );
   },
+
   joinGroup: async (ctx) => {
     const args = ctx.message.text.split(" ").slice(1);
 
