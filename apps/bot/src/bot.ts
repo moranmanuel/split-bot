@@ -21,6 +21,7 @@ const splitBot = {
     const { error } = await db.from(table).insert(data);
     return error;
   },
+
   getUserAndGroupData: async (id: number, groupCode: string) => {
     const userQuery = db
       .from("users")
@@ -39,13 +40,44 @@ const splitBot = {
       groupQuery,
     ]);
 
+    if(!(dataUser && dataGroup)) {
+      throw new Error("Query error")
+    }
+
     return {
-      userId: dataUser?.id,
-      groupId: dataGroup?.id,
-      groupName: dataGroup?.name,
+      userId: dataUser.id,
+      groupId: dataGroup.id,
+      groupName: dataGroup.name,
     };
+  }, 
+
+  createGroup: async (groupName: string, userId: number): Promise<string> => {
+    let groupSlug  = String(Math.floor(Math.random() * 100_000)).padStart(
+      5,
+      "0"
+    );
+    
+    const { data } = await db.from("groups").select("slug");
+
+    if (!data) {
+      throw new Error("Query Error");
+    }
+
+    let exists = true;
+
+    while (exists) {
+      groupSlug = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
+      exists = data.some((g) => g.slug === groupSlug);
+    }
+    
+    const newGroup = {name: groupName, slug: groupSlug, created_by_user_id: userId}
+
+    await splitBot.addData(newGroup, "groups");
+
+    return groupSlug
   },
-  joinGroup: async (id: number, groupCode: string): Promise<string> => {
+
+  joinGroup: async (id: number, groupCode: string, firstName : string): Promise<string> => {
     const { userId, groupId, groupName } = await splitBot.getUserAndGroupData(
       id,
       groupCode
@@ -58,58 +90,48 @@ const splitBot = {
       .order("last_joined_at", { ascending: false })
       .single();
 
-    if (!data) {
-      throw new Error(`No existe grupo con el codigo: ${groupCode}`);
+    if (!data) { // Si no esta en ningun grupo aun
+      await splitBot.addData({user_id: userId, group_id: groupId, name: firstName}, "group_members")
+      return `Te uniste al grupo: ${groupName}`
     }
 
-    await db
-      .from("group_members")
-      .update({ last_joined_at: new Date() })
-      .eq("group_id", groupId);
+    
+    if (data.some((gm:{group_id: string}) => gm.group_id === groupId)) {
+      if (data[0].group_id == groupId) { // Si esta actualmente en el grupo al que esta queriendo acceder
+        return `Ya estas en el grupo ${groupName}`
+      } else { // Si ya esta en el grupo al que esta queriendo acceder pero actualmente esta operando sobre otro grupo
+        await db
+          .from("group_members")
+          .update({ last_joined_at: new Date() })
+          .eq("group_id", groupId);
+        return `Te uniste al grupo: ${groupName}`
+      }
+    }
 
-    return groupName;
-
-    // ctx.reply(`Te uniste al grupo: ${groupName}`);
-
-    // if (data.some((gm) => gm.group_id === groupId)) {
-    //   if (data[0].group_id == groupId) {
-    //     ctx.reply(`Ya estas en el grupo ${groupName}`);
-    //   } else {
-    //   }
-    // } else if (groupName) {
-    //   const newGroupMember = { user_id: userId, group_id: groupId };
-    //   await splitBot.addData(newGroupMember, "group_members");
-    //   ctx.reply(`Te uniste al grupo: ${groupName}`);
-    // }
+    return 'Si sale este mensaje significa que hubo un error'
   },
 
-  createGroup: async (newGroup: { name: string; code: string }) => {
-    await splitBot.addData(newGroup, "groups");
-  },
+  createExpense: async (user: string, amount: string, description: string, telegramId: number): Promise<string> => {
+    const { data: dataUser } = await db
+      .from("users")
+      .select("id")
+      .eq("telegram_id", telegramId)
+      .single();
 
-  getGroupCodes: async () => {
-    const { data } = await db.from("groups").select("slug");
-    return data;
-  },
-
-  createExpense: async (
-    id: number,
-    user: string,
-    amount: string,
-    description: string
-  ) => {
-    const { userId } = await splitBot.getUserAndGroupData(id);
+    if (!dataUser) {
+      throw new Error("Query error");
+    }
 
     const { data } = await db
       .from("group_members")
-      .select("group_id")
-      .eq("user_id", userId)
+      .select("id, group_id")
+      .eq("user_id", dataUser.id)
       .order("last_joined_at", { ascending: false })
       .limit(1)
       .single();
 
     if (!data) {
-      throw new Error("El usuario no esta en ningun grupo");
+      throw new Error("Query error");
     }
 
     const dataGroupQuery = db
@@ -120,7 +142,7 @@ const splitBot = {
 
     const dataGroupMembersQuery = db
       .from("group_members")
-      .select("users(name), user_id")
+      .select("id")
       .eq("group_id", data.group_id)
       .eq("users.name", user)
       .single();
@@ -129,51 +151,44 @@ const splitBot = {
       [dataGroupQuery, dataGroupMembersQuery]
     );
 
-    if (!dataGroup) {
-      throw new Error("No existe la columna name en la tabla groups");
+    if (!(dataGroup && dataGroupMembers)) {
+      throw new Error("Query error");
     }
 
-    if (data && dataGroupMembers) {
-      const newExpense = {
-        amount,
-        description,
-        user_id: dataGroupMembers.user_id,
-        group_id: data.group_id,
-      };
+    const newExpense = {
+      amount,
+      description,
+      group_id: data.group_id,
+      created_by_member_id: data.id,
+      paid_by_member_id: dataGroupMembers.id
+    };
 
-      await splitBot.addData(newExpense, "expenses");
-      return dataGroup.name;
-    }
-    if (data) {
-      throw new Error("No existe ese usuario en este grupo");
-    }
-    throw new Error("Para guardar un gasto primero debes estar en un grupo");
-  },
-};
+    await splitBot.addData(newExpense, "expenses");
 
-const splitBotCommandHandlers = {
-  createUser: async (ctx) => {
-    if (!ctx) {
-      throw new Error('Message "from" is missing');
-    }
-
-    const newUser = { telegram_id: ctx?.from.id, name: ctx.from.first_name };
-    await splitBot.addData(newUser, "users");
+    return dataGroup.name;
   },
 
-  showExpenses: async (ctx) => {
-    const { userId } = await splitBot.getUserAndGroupData(ctx);
+  showExpenses: async(telegramId: number) => {
+    const { data: dataUser } = await db
+      .from("users")
+      .select("id")
+      .eq("telegram_id", telegramId)
+      .single();
+
+    if(!dataUser) {
+      throw new Error("Query error")
+    }
 
     const { data: dataGroupMembers } = await db
       .from("group_members")
       .select("group_id")
-      .eq("user_id", userId)
+      .eq("user_id", dataUser.id)
       .order("last_joined_at", { ascending: false })
       .limit(1)
       .single();
 
     if (!dataGroupMembers) {
-      throw new Error("El usuario no esta en ningun grupo");
+      throw new Error("Query error");
     }
 
     const groupsQuery = db
@@ -184,133 +199,138 @@ const splitBotCommandHandlers = {
 
     const expensesQuery = db
       .from("expenses")
-      .select("amount, description, users(name)")
-      .eq("group_id", dataGroupMembers.group_id);
+      .select("amount, description, payer:group_members!paid_by_member_id ( user:users(name) )")
+      .eq("group_id", dataGroupMembers.group_id)
 
     const [{ data: dataGroup }, { data: dataExpenses }] = await Promise.all([
       groupsQuery,
       expensesQuery,
-    ]);
-
-    if (!dataGroup) {
+    ])
+    
+    if (!(dataGroup && dataExpenses)) {
       throw new Error("Query error");
     }
 
-    if (!dataExpenses) {
-      throw new Error("Query error");
+    return { dataGroup, dataExpenses }
+  }
+};
+
+const splitBotCommandHandlers = {
+  createUser: async (ctx) => {
+    if (!ctx) {
+      throw new Error('Message "from" is missing');
     }
 
-    let text = `Gastos ${dataGroup.name}:\n`;
-
-    for (const expense of dataExpenses) {
-      text += `${expense.users.name}: $${expense.amount} ${expense.description} \n`;
+    const newUser = { telegram_user_id: ctx.from.id, name: ctx.from.first_name };
+    await splitBot.addData(newUser, "users");
+  },
+  
+  createGroup: async (ctx) => {
+    const args = ctx.message.text.split(" ").slice(1);
+    const concept = args.join(" ");
+    const groupName = concept.charAt(0).toUpperCase() + concept.slice(1);
+    const userId = ctx.from.id
+    
+    if(!groupName) {
+        await ctx.reply("Tenés que escribir un nombre de grupo. Ej: /crear miGrupo")
+        return
+      }
+      
+      const groupSlug = await splitBot.createGroup(groupName, userId);
+      
+      await ctx.reply(
+        "✅ <b>Grupo creado</b>\n\n" +
+        "📌 <b>Detalles</b>\n" +
+        
+        "━━━━━━━━━━━━━━\n" +
+        `👥 <b>Grupo:</b> ${groupName}\n` +
+        `🔑 <b>Código:</b> <code>${groupSlug}</code>`,
+        { parse_mode: "HTML" }
+      );
+  },
+  
+  showCommands: async (ctx) => {
+    await ctx.reply(
+      "📌 <b>Comandos del bot</b>\n\n" +
+      "📋 <b>Lista de comandos</b>\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "🆕 /crear nombre → Crear grupo\n" +
+      "Ej: <code>/crear Viaje</code>\n\n" +
+      "🔑 /unirse codigo → Unirse a grupo\n" +
+      "Ej: <code>/unirse ABC123</code>\n\n" +
+      "💲 /gastar usuario precio descripcion\n" +
+      "Ej: <code>/gastar Manuel 500 Pizza</code>",
+      { parse_mode: "HTML" }
+    );
+  },
+  
+  joinGroup: async (ctx) => {
+    const args = ctx.message.text.split(" ").slice(1);
+    
+    const telegramId = ctx.from.id;
+    const firstName = ctx.from.first_name;
+    const groupSlug = args.join(" ");
+    
+    if (!groupSlug) {
+      await ctx.reply("Falta el codigo de grupo. Ej: /unirse 12345")
+      return
     }
-
-    await ctx.reply(text);
+    
+    const outputMessage = await splitBot.joinGroup(telegramId, groupSlug, firstName);
+    
+    ctx.reply(outputMessage);
   },
 
   createExpense: async (ctx) => {
     if (!ctx.message) {
       throw new Error("Message payload is undefined");
     }
-
+    
     const args = ctx.message.text.split(" ").slice(1);
-
+    
     const user = args[0];
     const amount = args[1];
     const concept = args.slice(2).join(" ");
     const description = concept.charAt(0).toUpperCase() + concept.slice(1);
     const telegramId = ctx.from.id;
-
+    
     if (!(user && amount && description)) {
-      throw new Error("Missing data");
+      await ctx.reply("Falta informacion. Ej: /gastar Manuel 2500 medialunas");
+      return
     }
-
-    const groupName = splitBot.createExpense(
-      telegramId,
+    
+    const groupName = await splitBot.createExpense(
       user,
       amount,
-      description
+      description,
+      telegramId
     );
-
-    if (groupName) {
-      await ctx.reply(
-        "✅ <b>Gasto guardado</b>\n\n" +
-          "📌 <b>Detalles</b>\n" +
-          "━━━━━━━━━━━━━━\n" +
-          `👥 ${groupName}\n` +
-          `👤 ${user}\n` +
-          `🧾 ${description}\n` +
-          `💲 $${amount}`,
-        { parse_mode: "HTML" }
-      );
-    } else {
-      throw new Error("Query error");
-    }
-  },
-
-  createGroup: async (ctx) => {
-    const args = ctx.message.text.split(" ").slice(1);
-    const concept = args.join(" ");
-    const groupName = concept.charAt(0).toUpperCase() + concept.slice(1);
-
-    let groupCode = String(Math.floor(Math.random() * 100_000)).padStart(
-      5,
-      "0"
-    );
-
-    const data = await splitBot.getGroupCodes();
-
-    if (!data) {
-      throw new Error("Query Error");
-    }
-
-    let exists = true;
-
-    while (exists) {
-      groupCode = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
-      exists = data.some((g) => g.slug === groupCode);
-    }
-
-    const newGroup = { name: groupName, code: groupCode };
-
-    await splitBot.createGroup(newGroup);
-
+    
     await ctx.reply(
-      "✅ <b>Grupo creado</b>\n\n" +
+      "✅ <b>Gasto guardado</b>\n\n" +
         "📌 <b>Detalles</b>\n" +
         "━━━━━━━━━━━━━━\n" +
-        `👥 <b>Grupo:</b> ${groupName}\n` +
-        `🔑 <b>Código:</b> <code>${groupCode}</code>`,
-      { parse_mode: "HTML" }
-    );
+        `👥 ${groupName}\n` +
+        `👤 ${user}\n` +
+        `🧾 ${description}\n` +
+        `💲 $${amount}`,
+        { parse_mode: "HTML" }
+    )
   },
-
-  showCommands: async (ctx) => {
-    await ctx.reply(
-      "📌 <b>Comandos del bot</b>\n\n" +
-        "📋 <b>Lista de comandos</b>\n" +
-        "━━━━━━━━━━━━━━\n" +
-        "🆕 /crear nombre → Crear grupo\n" +
-        "Ej: <code>/crear Viaje</code>\n\n" +
-        "🔑 /unirse codigo → Unirse a grupo\n" +
-        "Ej: <code>/unirse ABC123</code>\n\n" +
-        "💲 /gastar usuario precio descripcion\n" +
-        "Ej: <code>/gastar Manuel 500 Pizza</code>",
-      { parse_mode: "HTML" }
-    );
-  },
-
-  joinGroup: async (ctx) => {
-    const args = ctx.message.text.split(" ").slice(1);
-
-    const telegramId = ctx.from.id;
-    const groupCode = args.join(" ");
-
-    const groupName = await splitBot.joinGroup(telegramId, groupCode);
-
-    ctx.reply(`Te uniste al grupo: ${groupName}`);
-  },
+  
+  showExpenses: async (ctx) => {
+    const telegramId = ctx.from.id
+    
+    const {dataGroup, dataExpenses} = await splitBot.showExpenses(telegramId)
+    
+    let text = `Gastos ${dataGroup.name}:\n`;
+    
+    for (const expense of dataExpenses) {
+      text += `${expense.payer[0]?.user[0]?.name}: $${expense.amount} ${expense.description} \n`;
+    }
+    
+    await ctx.reply(text);
+  }
 } satisfies Record<string, CommandHandler>;
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -321,13 +341,8 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-bot.command("gastar", async (ctx) => {
-  await splitBotCommandHandlers.createExpense(ctx);
-  await splitBotCommandHandlers.showCommands(ctx);
-});
-
-bot.command("listar", async (ctx) => {
-  await splitBotCommandHandlers.showExpenses(ctx);
+bot.start(async (ctx) => {
+  await splitBotCommandHandlers.createUser(ctx);
   await splitBotCommandHandlers.showCommands(ctx);
 });
 
@@ -341,8 +356,13 @@ bot.command("unirse", async (ctx) => {
   await splitBotCommandHandlers.showCommands(ctx);
 });
 
-bot.start(async (ctx) => {
-  await splitBotCommandHandlers.createUser(ctx);
+bot.command("gastar", async (ctx) => {
+  await splitBotCommandHandlers.createExpense(ctx);
+  await splitBotCommandHandlers.showCommands(ctx);
+});
+
+bot.command("listar", async (ctx) => {
+  await splitBotCommandHandlers.showExpenses(ctx);
   await splitBotCommandHandlers.showCommands(ctx);
 });
 
