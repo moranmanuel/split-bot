@@ -4,6 +4,7 @@ import { db } from "@splitbot/db";
 
 import { type Context, type MiddlewareFn, Telegraf } from "telegraf";
 import type { Message, Update } from "telegraf/typings/core/types/typegram.js";
+import { group } from "node:console";
 
 type BaseTextContext = Context<Update.MessageUpdate<Message.TextMessage>>;
 
@@ -212,6 +213,26 @@ const splitBot = {
     }
 
     return { dataGroup, dataExpenses }
+  },
+
+  showGroupMembers: async(telegramId: number) => {
+    const { data: dataUser } = await db
+      .from("users")
+      .select("id")
+      .eq("telegram_id", telegramId)
+      .single();
+
+    if(!dataUser) {
+      throw new Error("Query error")
+    }
+
+    const { data: groupMembers } = await db
+      .from("group_members")
+      .select("groups(users(name)), groups(name)")
+      .eq("user_id", dataUser.id)
+      .order("last_joined_at", { ascending: false })
+
+    return groupMembers
   }
 };
 
@@ -221,7 +242,7 @@ const splitBotCommandHandlers = {
       throw new Error('Message "from" is missing');
     }
 
-    const newUser = { telegram_user_id: ctx.from.id, name: ctx.from.first_name };
+    const newUser = { name: ctx.from.first_name, telegram_user_id: ctx.from.id };
     await splitBot.addData(newUser, "users");
   },
   
@@ -323,10 +344,29 @@ const splitBotCommandHandlers = {
     
     const {dataGroup, dataExpenses} = await splitBot.showExpenses(telegramId)
     
-    let text = `Gastos ${dataGroup.name}:\n`;
+    let text = `Gastos ${dataGroup.name}:\n\n`;
     
     for (const expense of dataExpenses) {
       text += `${expense.payer[0]?.user[0]?.name}: $${expense.amount} ${expense.description} \n`;
+    }
+    
+    await ctx.reply(text);
+  },
+
+  showGroupMembers: async(ctx) => {
+    const telegramId = ctx.from.id
+
+    const groupMembers = await splitBot.showGroupMembers(telegramId)
+
+    if(!groupMembers) {
+      ctx.reply("No estas en ningun grupo")
+      return
+    }
+
+    let text = `Integrantes Grupo ${groupMembers[0]?.groups[0]?.name}:\n\n`;
+    
+    for (const member of groupMembers) {
+      text += `${member.groups[0]?.users[0]?.name}\n`;
     }
     
     await ctx.reply(text);
@@ -361,8 +401,13 @@ bot.command("gastar", async (ctx) => {
   await splitBotCommandHandlers.showCommands(ctx);
 });
 
-bot.command("listar", async (ctx) => {
+bot.command("gastos", async (ctx) => {
   await splitBotCommandHandlers.showExpenses(ctx);
+  await splitBotCommandHandlers.showCommands(ctx);
+});
+
+bot.command("miembros", async (ctx) => {
+  await splitBotCommandHandlers.showGroupMembers(ctx);
   await splitBotCommandHandlers.showCommands(ctx);
 });
 
