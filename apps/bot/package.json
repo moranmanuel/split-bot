@@ -2,10 +2,9 @@
   "name": "bot",
   "version": "1.0.0",
   "private": true,
-  "main": "src/bot.js",
   "scripts": {
-    "dev": "node src/bot.js",
-    "start": "node src/bot.js"
+    "dev": "tsx src/bot.ts",
+    "start": "node src/bot.ts"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
@@ -13,6 +12,7 @@
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "@types/node": "^25.4.0"
+    "@types/node": "^25.4.0",
+    "tsx": "^4.21.0"
   }
 }

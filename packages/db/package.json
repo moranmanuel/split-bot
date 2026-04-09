@@ -14,5 +14,11 @@
     "build": "tsc -p tsconfig.build.json",
     "check-types": "tsc -p tsconfig.json --noEmit",
     "lint": "pnpm exec ultracite check src"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1"
   }
 }
